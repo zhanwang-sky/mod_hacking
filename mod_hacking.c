@@ -15,7 +15,7 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_hacking_load);
 SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_hacking_shutdown);
 SWITCH_MODULE_DEFINITION(mod_hacking, mod_hacking_load, mod_hacking_shutdown, NULL);
 
-typedef struct hacking_session {
+typedef struct hacking_bug_session {
   switch_core_session_t* session;
   switch_media_bug_t* bug;
   uint32_t sample_rate;
@@ -23,7 +23,7 @@ typedef struct hacking_session {
   uint64_t wr_samples;
   switch_bool_t wr_act_fired;
   switch_bool_t rd_act_fired;
-} hacking_session_t;
+} hacking_bug_session_t;
 
 static struct {
   char* foo;
@@ -56,7 +56,7 @@ hacking_fire_event(const char* uuid, const char* event_name) {
 static switch_bool_t
 hacking_cb(switch_media_bug_t* bug, void* data, switch_abc_type_t type) {
   switch_core_session_t* session = switch_core_media_bug_get_session(bug);
-  hacking_session_t* s = (hacking_session_t*) data;
+  hacking_bug_session_t* s = (hacking_bug_session_t*) data;
   switch_codec_t* read_codec = NULL;
   switch_frame_t* frame = NULL;
   uint32_t sample_rate = 0;
@@ -86,7 +86,7 @@ hacking_cb(switch_media_bug_t* bug, void* data, switch_abc_type_t type) {
         s->sample_rate = sample_rate;
 
         switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
-                          "hacking_cb[init]: hacking_session started, sample_rate=%u\n",
+                          "hacking_cb[init]: hacking_bug_session started, sample_rate=%u\n",
                           sample_rate);
 
       } while (0);
@@ -122,8 +122,8 @@ hacking_cb(switch_media_bug_t* bug, void* data, switch_abc_type_t type) {
     case SWITCH_ABC_TYPE_CLOSE:
       // XXX TODO: do clean
       switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
-                        "hacking_cb[close]: hacking_session ended, "
-                        "total %lu samples read, %lu samples write\n",
+                        "hacking_cb[close]: hacking_bug_session ended, "
+                        "total %llu samples read, %llu samples write\n",
                         s->rd_samples, s->wr_samples);
       break;
 
@@ -137,7 +137,7 @@ hacking_cb(switch_media_bug_t* bug, void* data, switch_abc_type_t type) {
 // static void hacking_app_func(switch_core_session_t *session, const char *data)
 SWITCH_STANDARD_APP(hacking_app_func) {
   switch_channel_t* channel = NULL;
-  hacking_session_t* s = NULL;
+  hacking_bug_session_t* s = NULL;
   switch_media_bug_t* bug = NULL;
 
   switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
@@ -150,15 +150,15 @@ SWITCH_STANDARD_APP(hacking_app_func) {
     return;
   }
 
-  if (switch_channel_get_private(channel, "__hacking_session__") != NULL) {
+  if (switch_channel_get_private(channel, "__hacking_bug_session__") != NULL) {
     switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR,
                       "app_func: media bug already attached\n");
     return;
   }
 
-  if (!(s = switch_core_session_alloc(session, sizeof(hacking_session_t)))) {
+  if (!(s = switch_core_session_alloc(session, sizeof(hacking_bug_session_t)))) {
     switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR,
-                      "app_func: fail to alloc hacking_session\n");
+                      "app_func: fail to alloc hacking_bug_session\n");
     return;
   }
 
@@ -170,7 +170,7 @@ SWITCH_STANDARD_APP(hacking_app_func) {
     return;
   }
 
-  if (switch_channel_set_private(channel, "__hacking_session__", s) != SWITCH_STATUS_SUCCESS) {
+  if (switch_channel_set_private(channel, "__hacking_bug_session__", s) != SWITCH_STATUS_SUCCESS) {
     switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR,
                       "app_func: fail to set channel private\n");
     // XXX TODO: remove media bug

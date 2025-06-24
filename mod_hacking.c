@@ -181,9 +181,70 @@ SWITCH_STANDARD_APP(hacking_app_func) {
                     "app_func: media bug added\n");
 }
 
+static switch_status_t
+hacking_speech_open(switch_speech_handle_t* sh, const char* voice_name, int rate, int channels, switch_speech_flag_t* flags) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX open [%p](%s) - voice_name=%s, rate=%d, channels=%d\n",
+                    sh, sh->param, voice_name, rate, channels);
+  return SWITCH_STATUS_SUCCESS;
+}
+
+static switch_status_t
+hacking_speech_close(switch_speech_handle_t* sh, switch_speech_flag_t* flags) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX close [%p](%s)\n",
+                    sh, sh->param);
+  return SWITCH_STATUS_SUCCESS;
+}
+
+static switch_status_t
+hacking_speech_feed_tts(switch_speech_handle_t* sh, char* text, switch_speech_flag_t* flags) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX feed_tts [%p](%s) - text=%s\n",
+                    sh, sh->param, text);
+  return SWITCH_STATUS_SUCCESS;
+}
+
+static switch_status_t
+hacking_speech_read_tts(switch_speech_handle_t* sh, void* data, switch_size_t* datalen, switch_speech_flag_t* flags) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX read_tts [%p](%s) - data=%p, datalen=%zu\n",
+                    sh, sh->param, data, *datalen);
+  return SWITCH_STATUS_BREAK;
+}
+
+static void
+hacking_speech_flush_tts(switch_speech_handle_t* sh) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX flush_tts [%p](%s)\n",
+                    sh, sh->param);
+}
+
+static void
+hacking_speech_text_param_tts(switch_speech_handle_t* sh, char* param, const char* val) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX text_param [%p](%s) - param=%s, val=%s\n",
+                    sh, sh->param, param, val);
+}
+
+static void
+hacking_speech_numeric_param_tts(switch_speech_handle_t* sh, char* param, int val) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX numeric_param [%p](%s) - param=%s, val=%d\n",
+                    sh, sh->param, param, val);
+}
+
+static void
+hacking_speech_float_param_tts(switch_speech_handle_t* sh, char* param, double val) {
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
+                    "XXX float_param [%p](%s) - param=%s, val=%lf\n",
+                    sh, sh->param, param, val);
+}
+
 // switch_status_t mod_hacking_load(switch_loadable_module_interface_t **module_interface, switch_memory_pool_t *pool)
 SWITCH_MODULE_LOAD_FUNCTION(mod_hacking_load) {
   switch_application_interface_t* app_interface = NULL;
+  switch_speech_interface_t* speech_interface = NULL;
 
   // load config
   if (switch_xml_config_parse_module_settings(HACK_CONFIG_FILE, SWITCH_FALSE, hacking_instructions) != SWITCH_STATUS_SUCCESS) {
@@ -197,6 +258,39 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_hacking_load) {
   SWITCH_ADD_APP(app_interface,
                  "hacking", "do some hacking with media data", "hacking - do some hacking with media data",
                  hacking_app_func, "rtmp://balabala.com/foo/bar", SAF_MEDIA_TAP);
+
+#if 0
+Dialplan:
+```xml
+<action application="set" data="tts_engine=hacking:newbee-tts"/>
+<action application="set" data="tts_voice=xiaoming"/>
+```
+
+ESL message:
+```
+auth ClueCon
+
+sendmsg <uuid>
+call-command: execute
+execute-app-name: playback
+execute-app-arg: say:{param1=foo,param2=bar}hello world
+```
+#endif
+  speech_interface = switch_loadable_module_create_interface(*module_interface, SWITCH_SPEECH_INTERFACE);
+  speech_interface->interface_name = "hacking";
+  speech_interface->speech_open = hacking_speech_open;
+  speech_interface->speech_close = hacking_speech_close;
+  /* text="hello world" */
+  speech_interface->speech_feed_tts = hacking_speech_feed_tts;
+  /* read 20ms each time */
+  speech_interface->speech_read_tts = hacking_speech_read_tts;
+  /* do cleanup */
+  speech_interface->speech_flush_tts = hacking_speech_flush_tts;
+  /* param=param1, val=foo */
+  /* param=param2, val=bar */
+  speech_interface->speech_text_param_tts = hacking_speech_text_param_tts;
+  speech_interface->speech_numeric_param_tts = hacking_speech_numeric_param_tts;
+  speech_interface->speech_float_param_tts = hacking_speech_float_param_tts;
 
   switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "%s loaded\n", modname);
 

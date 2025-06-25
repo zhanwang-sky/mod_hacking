@@ -25,6 +25,14 @@ typedef struct hacking_bug_session {
   switch_bool_t rd_act_fired;
 } hacking_bug_session_t;
 
+typedef struct hacking_tts_session {
+  int sample_rate;
+  int nb_channels;
+  int tone_hz;
+  int duration;
+  double lasting;
+} hacking_tts_session_t;
+
 static struct {
   char* foo;
   int bar;
@@ -183,61 +191,116 @@ SWITCH_STANDARD_APP(hacking_app_func) {
 
 static switch_status_t
 hacking_speech_open(switch_speech_handle_t* sh, const char* voice_name, int rate, int channels, switch_speech_flag_t* flags) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX open [%p](%s) - voice_name=%s, rate=%d, channels=%d\n",
+  hacking_tts_session_t* s = NULL;
+
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_open [%p](%s) - voice_name=%s, rate=%d, channels=%d\n",
                     sh, sh->param, voice_name, rate, channels);
+
+  s = switch_core_alloc(sh->memory_pool, sizeof(*s));
+  if (!s) {
+    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR,
+                      "speech_open [%p](%s) - fail to alloc tts session\n",
+                      sh, sh->param);
+    return SWITCH_STATUS_FALSE;
+  }
+
+  s->sample_rate = rate;
+  s->nb_channels = channels;
+
+  sh->private_info = s;
+
   return SWITCH_STATUS_SUCCESS;
 }
 
 static switch_status_t
 hacking_speech_close(switch_speech_handle_t* sh, switch_speech_flag_t* flags) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX close [%p](%s)\n",
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_close [%p](%s)\n",
                     sh, sh->param);
   return SWITCH_STATUS_SUCCESS;
 }
 
 static switch_status_t
 hacking_speech_feed_tts(switch_speech_handle_t* sh, char* text, switch_speech_flag_t* flags) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX feed_tts [%p](%s) - text=%s\n",
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_feed_tts [%p](%s) - text=%s\n",
                     sh, sh->param, text);
   return SWITCH_STATUS_SUCCESS;
 }
 
 static switch_status_t
 hacking_speech_read_tts(switch_speech_handle_t* sh, void* data, switch_size_t* datalen, switch_speech_flag_t* flags) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX read_tts [%p](%s) - data=%p, datalen=%zu\n",
-                    sh, sh->param, data, *datalen);
-  return SWITCH_STATUS_BREAK;
+  hacking_tts_session_t* s = (hacking_tts_session_t*) sh->private_info;
+
+  // sanity check
+  if (s->tone_hz < 100 || s->tone_hz > 1000 ||
+      s->duration < 1 || s->duration > 10) {
+    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR,
+                      "speech_read_tts [%p](%s) - tts is not properly configured: tone_hz=%d, duration=%d\n",
+                      sh, sh->param, s->tone_hz, s->duration);
+    return SWITCH_STATUS_FALSE;
+  }
+
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_read_tts [%p](%s) - data=%p, datalen=%zu; duration=%d, lasting=%.2lf\n",
+                    sh, sh->param, data, *datalen, s->duration, s->lasting);
+
+  if ((s->lasting + 1e-6) >= s->duration) {
+    return SWITCH_STATUS_BREAK;
+  }
+
+  do {
+    double delta_t = 1.0 / s->sample_rate;
+    double phase = 0.0;
+    int16_t* s16 = (int16_t*) data;
+    int nb_samples = *datalen / (s->nb_channels << 1);
+    for (int i = 0; i != nb_samples; ++i) {
+      s->lasting += delta_t;
+      phase = s->lasting * s->tone_hz;
+      phase *= 6.28318531;
+      s16[i] = (int16_t) (sin(phase) * 32767.0);
+    }
+  } while (0);
+
+  return SWITCH_STATUS_SUCCESS;
 }
 
 static void
 hacking_speech_flush_tts(switch_speech_handle_t* sh) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX flush_tts [%p](%s)\n",
-                    sh, sh->param);
+  hacking_tts_session_t* s = (hacking_tts_session_t*) sh->private_info;
+
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_flush_tts [%p](%s) - lasting=%.2lf\n",
+                    sh, sh->param, s->lasting);
 }
 
 static void
 hacking_speech_text_param_tts(switch_speech_handle_t* sh, char* param, const char* val) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX text_param [%p](%s) - param=%s, val=%s\n",
+  hacking_tts_session_t* s = (hacking_tts_session_t*) sh->private_info;
+
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_text_param [%p](%s) - param=%s, val=%s\n",
                     sh, sh->param, param, val);
+
+  if (strcasecmp(param, "Tone-HZ") == 0) {
+    s->tone_hz = atoi(val);
+  } else if (strcasecmp(param, "Duration") == 0) {
+    s->duration = atoi(val);
+  }
 }
 
 static void
 hacking_speech_numeric_param_tts(switch_speech_handle_t* sh, char* param, int val) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX numeric_param [%p](%s) - param=%s, val=%d\n",
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_numeric_param [%p](%s) - param=%s, val=%d\n",
                     sh, sh->param, param, val);
 }
 
 static void
 hacking_speech_float_param_tts(switch_speech_handle_t* sh, char* param, double val) {
-  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE,
-                    "XXX float_param [%p](%s) - param=%s, val=%lf\n",
+  switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                    "speech_float_param [%p](%s) - param=%s, val=%lf\n",
                     sh, sh->param, param, val);
 }
 
@@ -259,30 +322,13 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_hacking_load) {
                  "hacking", "do some hacking with media data", "hacking - do some hacking with media data",
                  hacking_app_func, "rtmp://balabala.com/foo/bar", SAF_MEDIA_TAP);
 
-#if 0
-Dialplan:
-```xml
-<action application="set" data="tts_engine=hacking:newbee-tts"/>
-<action application="set" data="tts_voice=xiaoming"/>
-```
-
-ESL message:
-```
-auth ClueCon
-
-sendmsg <uuid>
-call-command: execute
-execute-app-name: playback
-execute-app-arg: say:{param1=foo,param2=bar}hello world
-```
-#endif
   speech_interface = switch_loadable_module_create_interface(*module_interface, SWITCH_SPEECH_INTERFACE);
   speech_interface->interface_name = "hacking";
   speech_interface->speech_open = hacking_speech_open;
   speech_interface->speech_close = hacking_speech_close;
   /* text="hello world" */
   speech_interface->speech_feed_tts = hacking_speech_feed_tts;
-  /* read 20ms each time */
+  /* read audio data */
   speech_interface->speech_read_tts = hacking_speech_read_tts;
   /* do cleanup */
   speech_interface->speech_flush_tts = hacking_speech_flush_tts;
